@@ -1,0 +1,97 @@
+*&---------------------------------------------------------------------*
+*& Report ZPP_SEND_IDOC
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZPP_SEND_IDOC.
+
+TABLES: MARA , MARC, VARID.
+DATA: SELTAB    TYPE TABLE OF RSPARAMS.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK bl WITH FRAME TITLE text-000.
+
+SELECT-OPTIONS: so_matnr FOR MARC-MATNR,
+                so_werks FOR MARC-WERKS  OBLIGATORY DEFAULT '0400',
+                so_mtart for mara-mtart,                       "Material Type
+                so_MATKL FOR mara-MATKL,                       "Material Group
+                so_SPART for mara-SPART,                       "Division
+                so_dispo FOR MARC-dispo DEFAULT 'M01' to 'M10',"MRP Controller
+                so_MMSTA for marc-MMSTA,                       "plant status
+                so_dismm FOR MARC-dismm,                       "MRP type
+                so_SFCPF for marc-SFCPF,                       "production profile
+                so_LVORM for marc-LVORM DEFAULT ''.            "deletion ind
+
+SELECTION-SCREEN END OF BLOCK bl.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-001.
+SELECT-OPTIONS: so_VAR FOR  varid-VARIANT OBLIGATORY NO-EXTENSION NO INTERVALS DEFAULT 'PROLEIT_MS_CHG'.
+
+PARAMETERS:     p_skip type flag AS CHECKBOX DEFAULT 'X'.
+
+SELECTION-SCREEN END OF BLOCK b2.
+
+
+START-OF-SELECTION.
+
+  SELECT FROM MARA INNER JOIN MARC
+         ON   mara~matnr = marc~matnr
+    FIELDS mara~matnr ,werks
+    where  mara~matnr in @so_matnr and
+           werks in @so_werks and
+           mtart in @so_mtart and
+           matkl in @so_MATKL and
+           spart in @so_SPART and
+           dispo in @so_dispo and
+           MMSTA in @so_MMSTA and
+           SFCPF in @so_SFCPF and
+           marc~LVORM in @so_LVORM and
+           dismm in @so_dismm
+    into TABLE @data(it_marc).
+  if   it_marc[] is INITIAL.
+    MESSAGE text-020
+    TYPE 'E'.
+    EXIT .
+  endif.
+  clear: SELTAB.
+
+  SELTAB = VALUE #( for wa_marc IN it_marc (
+
+     SELNAME = 'MATNR_BO'
+     KIND    = 'S'
+     SIGN    = 'I'
+     OPTION  = 'EQ'
+     LOW     = wa_marc-matnr     ) ).
+
+  SELTAB =  VALUE #( BASE SELTAB for wa_marc IN it_marc (
+
+     SELNAME = 'WERKS_BO'
+     KIND    = 'S'
+     SIGN    = 'I'
+     OPTION  = 'EQ'
+     LOW     = wa_marc-WERKS    ) ).
+
+  DELETE ADJACENT DUPLICATES FROM SELTAB COMPARING ALL FIELDS.
+
+  SELTAB = VALUE #( BASE SELTAB
+                (      SELNAME = 'OPT_SYS'
+                       KIND    = 'S'
+                       SIGN    = 'I'
+                       OPTION  = 'EQ'
+                       LOW     = 'PROLEIT_MS' ) ).
+
+  if p_skip = 'X'.
+    submit RCCLMDAT      "call transaction POIM
+                 with selection-table seltab
+                 USING SELECTION-SET so_VAR-low
+*                  WITH MATNR_BO IN SO_matnr    "material BOM
+*                  WITH WERKS_BO in SO_werks    "plant BOM
+*              via selection-screen  "enter selection screen first
+                and return.
+  else.
+    submit RCCLMDAT      "call transaction POIM
+               with selection-table seltab
+               USING SELECTION-SET so_VAR-low
+               via selection-screen  "enter selection screen first
+               and return.
+  endif.
